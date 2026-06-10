@@ -1,0 +1,14 @@
+# Keil/MDK build artifacts and user-local IDE state
+/MDK-ARM/Boot/
+/MDK-ARM/*.uvguix.*
+/MDK-ARM/*.uvoptx
+/MDK-ARM/*.uvoptx.bak
+/MDK-ARM/*.uvproj.bak
+/MDK-ARM/*.uvprojx.bak
+
+
+/Vscode/
+/Tests/
+/docs/
+/keys/
+/test_app/
