@@ -76,14 +76,7 @@ boot_active_slot_read(uint8_t *active_slot)
     flash_area_close(fa);
 
     if (!boot_active_slot_record_valid(&record)) {
-        /*
-         * Previous behavior: invalid or empty user area record aborted the
-         * download path.
-         *
-         * return false;
-         */
-        *active_slot = BOOT_SLOT_PRIMARY;
-        return true;
+        return false;
     }
 
     *active_slot = record.active_slot;

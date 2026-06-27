@@ -45,6 +45,7 @@
 #define BOOT_TRIGGER_PIN GPIO_PIN_13
 #define BOOT_TRIGGER_PORT GPIOC
 #define BOOT_TRIGGER_ACTIVE GPIO_PIN_SET
+#define BOOT_ACTIVE_SLOT_UNKNOWN 0xFFU
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -101,6 +102,13 @@ static void enter_bootloader_download(uint8_t active_slot)
   else if (active_slot == BOOT_SLOT_SECONDARY)
   {
     active_str = "secondary";
+    target_str = "primary";
+    target_addr = primary;
+    target_slot = BOOT_SLOT_PRIMARY;
+  }
+  else if (active_slot == BOOT_ACTIVE_SLOT_UNKNOWN)
+  {
+    active_str = "none";
     target_str = "primary";
     target_addr = primary;
     target_slot = BOOT_SLOT_PRIMARY;
@@ -194,12 +202,19 @@ int main(void)
 
     if (!boot_active_slot_read(&active_slot))
     {
-      BOOT_LOG_ERR("Active slot record invalid, abort download.");
-      while (1)
-      {
-        IWDG_Feed();
-        HAL_Delay(200);
-      }
+      /*
+       * Previous behavior: invalid or empty user area record aborted the
+       * download path.
+       *
+       * BOOT_LOG_ERR("Active slot record invalid, abort download.");
+       * while (1)
+       * {
+       *   IWDG_Feed();
+       *   HAL_Delay(200);
+       * }
+       */
+      BOOT_LOG_WRN("Active slot record invalid, default download target: primary.");
+      active_slot = BOOT_ACTIVE_SLOT_UNKNOWN;
     }
 
     enter_bootloader_download(active_slot);
