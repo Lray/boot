@@ -23,7 +23,7 @@
 
 ## 重要限制
 
-1. 当前 `Boot/sysflash/sysflash.h` 是调试分区：Bootloader 为 `0x10000` 字节，两个应用槽各 `0x6000` 字节。应用镜像、TLV 和 trailer 必须全部装入槽内。
+1. 当前 `Boot/sysflash/sysflash.h` 是调试分区：Bootloader 为 `0x10000` 字节，两个应用槽各 `0x20000` 字节。应用镜像、TLV 和 trailer 必须全部装入槽内。
 2. `MDK-ARM/Boot.sct` 已更新为 64 KB Bootloader 区域；Keil/EIDE 当前 IROM 布局也应保持 `0x08000000 + 0x10000`。发布前仍建议检查 map 文件，确认 Bootloader 本体没有覆盖 Primary 槽。
 3. 当前签名验真只支持 EC256/ECDSA P-256 路径，不支持 RSA、Ed25519、加密镜像或压缩镜像。
 4. `Tests/` 是独立的主机侧测试，不在 Keil 工程内。部分测试仍保留旧分区断言，运行前需要与当前调试分区同步。
@@ -75,9 +75,11 @@
 
 ```text
 0x08000000  - 0x0800FFFF   Bootloader    64 KB   (0x10000)
-0x08010000  - 0x08015FFF   Primary       24 KB   (0x6000)
-0x08016000  - 0x0801BFFF   Secondary     24 KB   (0x6000)
-0x0801C000  - 0x081FDFFF   Reserved    1928 KB   (0x1E2000)
+0x08010000  - 0x0802FFFF   Primary      128 KB   (0x20000)
+0x08030000  - 0x0804FFFF   Secondary    128 KB   (0x20000)
+0x08050000  - 0x081F9FFF   Reserved    1704 KB   (0x1AA000)
+0x081FA000  - 0x081FBFFF   ECU Journal0   8 KB   (0x2000)
+0x081FC000  - 0x081FDFFF   ECU Journal1   8 KB   (0x2000)
 0x081FE000  - 0x081FFFFF   User Area      8 KB   (0x2000)
 ```
 
@@ -88,8 +90,8 @@
 | `CY_FLASH_BASE` | `0x08000000` | 内部 Flash 基地址 |
 | `CY_FLASH_SIZE` | `0x200000` | lower 2 MB Flash window |
 | `CY_BOOT_BOOTLOADER_SIZE` | `0x10000` | Bootloader 逻辑分区大小 |
-| `CY_BOOT_PRIMARY_1_SIZE` | `0x6000` | Primary 槽大小 |
-| `CY_BOOT_SECONDARY_1_SIZE` | `0x6000` | Secondary 槽大小 |
+| `CY_BOOT_PRIMARY_1_SIZE` | `0x20000` | Primary 槽大小 |
+| `CY_BOOT_SECONDARY_1_SIZE` | `0x20000` | Secondary 槽大小 |
 | `CY_BOOT_USER_AREA_SIZE` | `0x2000` | User Area 大小 |
 | `CY_BOOT_USER_AREA_OFFSET` | `0x1FE000` | User Area 相对 Flash base 的偏移 |
 | `CY_IMG_HDR_SIZE` | `0x200` | 镜像头大小 |
@@ -107,8 +109,8 @@ secondary_1.fa_off = CY_FLASH_BASE + CY_BOOT_BOOTLOADER_SIZE + CY_BOOT_PRIMARY_1
 ```text
 Primary slot base   = 0x08010000
 Primary vector      = 0x08010200   (slot base + 0x200)
-Secondary slot base = 0x08016000
-Secondary vector    = 0x08016200   (slot base + 0x200)
+Secondary slot base = 0x08030000
+Secondary vector    = 0x08030200   (slot base + 0x200)
 ```
 
 ## 构建方式
@@ -202,7 +204,7 @@ Reset
 
 ## Image 槽内布局
 
-每个应用槽大小为 `0x6000`。槽内从前到后依次是 MCUboot image header、应用代码 payload、TLV 区域、空闲填充区和 MCUboot trailer：
+每个应用槽大小为 `0x20000`。槽内从前到后依次是 MCUboot image header、应用代码 payload、TLV 区域、空闲填充区和 MCUboot trailer：
 
 ```text
 slot_base + 0x0000
@@ -213,8 +215,8 @@ slot_base + 0x0000
   ├─ Protected TLV          可选，长度 ih_protect_tlv_size
   ├─ Standard TLV           以 IMAGE_TLV_INFO_MAGIC 开始
   ├─ Padding / erased area  必须保持在 trailer 之前
-  └─ Trailer                0x5FC0 .. 0x5FFF
-slot_base + 0x6000
+  └─ Trailer                0x1FFC0 .. 0x1FFFF
+slot_base + 0x20000
 ```
 
 关键槽内 offset 如下：
@@ -224,8 +226,8 @@ slot_base + 0x6000
 | image header | `0x0000..0x01FF` | `--header-size 0x200` |
 | app vector/code 起点 | `0x0200` | 应用链接起始地址等于 slot base + `0x200` |
 | TLV 起点 | `0x0200 + ih_img_size` | 先 protected TLV，再 standard TLV |
-| trailer 起点 | `0x5FC0` | `boot_swap_info_off()` |
-| 槽结束 | `0x6000` | 不包含结束 offset |
+| trailer 起点 | `0x1FFC0` | `boot_swap_info_off()` |
+| 槽结束 | `0x20000` | 不包含结束 offset |
 
 `struct image_header` 的有效字段只有 32 字节，但本工程按 `CY_IMG_HDR_SIZE = 0x200` 预留整个 header 区。关键字段包括：
 
@@ -278,13 +280,13 @@ HASH 计算范围是：
 
 也就是 header area、payload 和 protected TLV。standard TLV 本身不在 HASH 输入范围内，但其中的 keyhash 和 ECDSA 签名会被 `image_validate.c` 扫描并用于验签。
 
-trailer 是 Direct XIP Revert 的状态区，不属于 image header/payload/TLV。当前 `bootutil_max_image_size()` 返回 trailer 起点 `0x5FC0`，因此：
+trailer 是 Direct XIP Revert 的状态区，不属于 image header/payload/TLV。当前 `bootutil_max_image_size()` 返回 trailer 起点 `0x1FFC0`，因此：
 
 ```text
-ih_hdr_size + ih_img_size + ih_protect_tlv_size + standard_tlv_total <= 0x5FC0
+ih_hdr_size + ih_img_size + ih_protect_tlv_size + standard_tlv_total <= 0x1FFC0
 ```
 
-如果 image header、payload、TLV 或 padding 覆盖 `0x5FC0..0x5FFF`，Bootloader 会把镜像视为越界或破坏 trailer 状态。
+如果 image header、payload、TLV 或 padding 覆盖 `0x1FFC0..0x1FFFF`，Bootloader 会把镜像视为越界或破坏 trailer 状态。
 
 ## 镜像校验
 
@@ -470,16 +472,16 @@ TinyCrypt 后端的优点是可移植性强，不依赖 MCU HASH 外设，也更
 
 每个槽末尾保留 MCUboot trailer。STM32U5 Flash 写入粒度为 16 字节 QUADWORD，因此 trailer flag 也按 16 字节对齐写入。
 
-对当前 `0x6000` 槽位，关键 offset 为：
+对当前 `0x20000` 槽位，关键 offset 为：
 
 | 字段 | offset | 绝对地址 Primary | 绝对地址 Secondary |
 | ---- | ------ | ---------------- | ------------------ |
-| `swap_info` | `0x5FC0` | `0x08015FC0` | `0x0801BFC0` |
-| `copy_done` | `0x5FD0` | `0x08015FD0` | `0x0801BFD0` |
-| `image_ok` | `0x5FE0` | `0x08015FE0` | `0x0801BFE0` |
-| `magic` | `0x5FF0` | `0x08015FF0` | `0x0801BFF0` |
+| `swap_info` | `0x1FFC0` | `0x0802FFC0` | `0x0804FFC0` |
+| `copy_done` | `0x1FFD0` | `0x0802FFD0` | `0x0804FFD0` |
+| `image_ok` | `0x1FFE0` | `0x0802FFE0` | `0x0804FFE0` |
+| `magic` | `0x1FFF0` | `0x0802FFF0` | `0x0804FFF0` |
 
-`bootutil_max_image_size()` 返回 `boot_swap_info_off(fap)`，所以当前镜像的 header + payload + TLV 最多只能使用到 `0x5FC0` 之前。
+`bootutil_max_image_size()` 返回 `boot_swap_info_off(fap)`，所以当前镜像的 header + payload + TLV 最多只能使用到 `0x1FFC0` 之前。
 
 Direct XIP Revert 状态机：
 
@@ -648,14 +650,14 @@ Primary 应用链接建议：
 
 ```text
 FLASH ORIGIN = 0x08010200
-FLASH LENGTH <= 0x5DC0，并额外预留 TLV/填充空间
+FLASH LENGTH <= 0x1F000，并额外预留 TLV/填充空间
 ```
 
 Secondary 应用链接建议：
 
 ```text
-FLASH ORIGIN = 0x08016200
-FLASH LENGTH <= 0x5DC0，并额外预留 TLV/填充空间
+FLASH ORIGIN = 0x08030200
+FLASH LENGTH <= 0x1F000，并额外预留 TLV/填充空间
 ```
 
 打包参数必须匹配 Bootloader 当前分区。
@@ -698,20 +700,20 @@ Direct-XIP 下不要依赖 header 中的 `ih_load_addr` 参与启动决策。
 应用应按运行槽位分别链接，启动地址始终由 slot base + header size 决定：
 
 - Primary vector: `0x08010200`
-- Secondary vector: `0x08016200`
+- Secondary vector: `0x08030200`
 
 下面的命令假定你从仓库根目录 `E:\Simple_ST\Boot` 执行。
 
 Primary 固件签名：
 
 ```bash
-imgtool sign --sha 256 --header-size 0x200 --pad-header --align 16 --version 1.0.0 --slot-size 0x6000 --key ..\..\keys\root-ec-p256.pem --pad primary.bin primary-signed.bin
+imgtool sign --sha 256 --header-size 0x200 --pad-header --align 16 --version 1.0.0 --slot-size 0x20000 --key ..\..\keys\root-ec-p256.pem primary.bin primary-signed.bin
 ```
 
 Secondary 固件签名：
 
 ```bash
-  imgtool sign --sha 256 --header-size 0x200 --pad-header --align 16 --version 1.0.0 --slot-size 0x6000 --key ..\..\keys\root-ec-p256.pem --pad secondary.bin secondary-signed.bin
+  imgtool sign --sha 256 --header-size 0x200 --pad-header --align 16 --version 1.0.0 --slot-size 0x20000 --key ..\..\keys\root-ec-p256.pem secondary.bin secondary-signed.bin
 ```
 
 如果需要检查签名产物，可以执行：
