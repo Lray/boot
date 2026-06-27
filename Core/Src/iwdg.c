@@ -21,6 +21,7 @@
 #include "iwdg.h"
 
 /* USER CODE BEGIN 0 */
+#define BOOT_IWDG_ENABLED 0
 
 /* USER CODE END 0 */
 
@@ -31,6 +32,12 @@ void MX_IWDG_Init(void)
 {
 
   /* USER CODE BEGIN IWDG_Init 0 */
+#if !BOOT_IWDG_ENABLED
+  /* Disabled for boot/app OTA bring-up. Keep the generated API as a no-op so
+   * existing feed call sites do not need to carry watchdog policy.
+   */
+  (void)hiwdg;
+#else
 
   /* USER CODE END IWDG_Init 0 */
 
@@ -47,6 +54,7 @@ void MX_IWDG_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN IWDG_Init 2 */
+#endif
 
   /* USER CODE END IWDG_Init 2 */
 
@@ -55,6 +63,7 @@ void MX_IWDG_Init(void)
 /* USER CODE BEGIN 1 */
 void IWDG_Feed(void)
 {
-  HAL_IWDG_Refresh(&hiwdg);
+  /* IWDG is intentionally not started by MX_IWDG_Init(). */
+  (void)hiwdg;
 }
 /* USER CODE END 1 */
