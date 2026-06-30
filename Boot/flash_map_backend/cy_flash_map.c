@@ -48,6 +48,21 @@ static struct flash_area secondary_1 =
     .fa_size = CY_BOOT_SECONDARY_1_SIZE
 };
 
+static struct flash_area boot_security_state_0 =
+{
+    .fa_id = FLASH_AREA_BOOT_SECURITY_STATE_0,
+    .fa_device_id = FLASH_DEVICE_INTERNAL_FLASH,
+    .fa_off = CY_FLASH_BASE + CY_BOOT_SECURITY_STATE_0_OFFSET,
+    .fa_size = CY_BOOT_SECURITY_STATE_SIZE
+};
+
+static struct flash_area boot_security_state_1 =
+{
+    .fa_id = FLASH_AREA_BOOT_SECURITY_STATE_1,
+    .fa_device_id = FLASH_DEVICE_INTERNAL_FLASH,
+    .fa_off = CY_FLASH_BASE + CY_BOOT_SECURITY_STATE_1_OFFSET,
+    .fa_size = CY_BOOT_SECURITY_STATE_SIZE
+};
 static struct flash_area boot_user =
 {
     .fa_id = FLASH_AREA_BOOT_USER,
@@ -62,6 +77,8 @@ struct flash_area *boot_area_descs[] =
     &bootloader,
     &primary_1,
     &secondary_1,
+    &boot_security_state_0,
+    &boot_security_state_1,
     &boot_user,
     NULL
 };

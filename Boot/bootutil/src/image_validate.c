@@ -4,14 +4,18 @@
 
 #include <stdint.h>
 #include <inttypes.h>
+#include <limits.h>
 #include <string.h>
 
 #include "bootutil/image.h"
 #include "bootutil/crypto/sha.h"
 #include "bootutil/sign_key.h"
 #include "bootutil/fault_injection_hardening.h"
-#include "bootutil_priv.h"
 #include "mcuboot_config.h"
+#ifdef MCUBOOT_HW_ROLLBACK_PROT
+#include "bootutil/security_cnt.h"
+#endif
+#include "bootutil_priv.h"
 #include "bootutil/bootutil_log.h"
 
 BOOT_LOG_MODULE_DECLARE(mcuboot);
@@ -76,6 +80,11 @@ bootutil_img_validate(struct boot_loader_state *state,
 #endif
     int rc = 0;
     FIH_DECLARE(fih_rc, FIH_FAILURE);
+#ifdef MCUBOOT_HW_ROLLBACK_PROT
+    fih_int security_cnt = fih_int_encode(INT_MAX);
+    uint32_t img_security_cnt = 0U;
+    FIH_DECLARE(security_counter_valid, FIH_FAILURE);
+#endif
 
     BOOT_LOG_DBG("bootutil_img_validate: flash area %p", fap);
 
@@ -180,6 +189,47 @@ bootutil_img_validate(struct boot_loader_state *state,
             key_id = -1;
             break;
 #endif /* EXPECTED_SIG_TLV */
+#ifdef MCUBOOT_HW_ROLLBACK_PROT
+        case IMAGE_TLV_SEC_CNT:
+            if (len != sizeof(img_security_cnt)) {
+                rc = -1;
+                goto out;
+            }
+
+            rc = LOAD_IMAGE_DATA(hdr, fap, off, &img_security_cnt, len);
+            if (rc) {
+                goto out;
+            }
+
+            FIH_CALL(boot_nv_security_counter_get, fih_rc, BOOT_CURR_IMG(state),
+                     &security_cnt);
+            if (FIH_NOT_EQ(fih_rc, FIH_SUCCESS)) {
+                FIH_SET(fih_rc, FIH_FAILURE);
+                goto out;
+            }
+
+            fih_rc = fih_ret_encode_zero_equality(
+                img_security_cnt < (uint32_t)fih_int_decode(security_cnt));
+            if (FIH_NOT_EQ(fih_rc, FIH_SUCCESS)) {
+                BOOT_LOG_ERR("Image security counter value %u lower than monotonic value %u",
+                             img_security_cnt, (uint32_t)fih_int_decode(security_cnt));
+                FIH_SET(fih_rc, FIH_FAILURE);
+                goto out;
+            }
+
+#ifdef MCUBOOT_HW_ROLLBACK_PROT_COUNTER_LIMITED
+            if (img_security_cnt > (uint32_t)fih_int_decode(security_cnt)) {
+                FIH_CALL(boot_nv_security_counter_is_update_possible, fih_rc,
+                         BOOT_CURR_IMG(state), img_security_cnt);
+                if (FIH_NOT_EQ(fih_rc, FIH_SUCCESS)) {
+                    FIH_SET(fih_rc, FIH_FAILURE);
+                    goto out;
+                }
+            }
+#endif
+            security_counter_valid = fih_rc;
+            break;
+#endif /* MCUBOOT_HW_ROLLBACK_PROT */
         default:
             break;
         }
@@ -195,6 +245,12 @@ bootutil_img_validate(struct boot_loader_state *state,
     FIH_SET(fih_rc, valid_signature);
 #else
     FIH_SET(fih_rc, FIH_SUCCESS);
+#endif
+#ifdef MCUBOOT_HW_ROLLBACK_PROT
+    if (FIH_NOT_EQ(security_counter_valid, FIH_SUCCESS)) {
+        rc = -1;
+        goto out;
+    }
 #endif
 
 out:

@@ -19,6 +19,16 @@ typedef int fih_ret;
         (ret) = f(__VA_ARGS__); \
     } while (0)
 
+static inline int fih_int_decode(fih_int x)
+{
+    return x;
+}
+
+static inline fih_int fih_int_encode(int x)
+{
+    return x;
+}
+
 static inline fih_ret fih_ret_encode_zero_equality(int x)
 {
     return (x == 0) ? FIH_SUCCESS : FIH_FAILURE;

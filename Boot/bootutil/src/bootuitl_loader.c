@@ -10,6 +10,10 @@
 #include "bootutil/bootutil_log.h"
 #include "flash_map_backend.h"
 #include "bootutil/image.h"
+#include "mcuboot_config.h"
+#ifdef MCUBOOT_HW_ROLLBACK_PROT
+#include "bootutil/security_cnt.h"
+#endif
 int boot_check_image(struct boot_loader_state *state, struct boot_status *bs, int slot)
 {
     TARGET_STATIC uint8_t tmpbuf[BOOT_TMPBUF_SZ];
@@ -203,6 +207,32 @@ int boot_compare_version(const struct image_version *ver1, const struct image_ve
 
     return 0;
 }
+
+#ifdef MCUBOOT_HW_ROLLBACK_PROT
+int
+boot_update_security_counter(struct boot_loader_state *state, int slot, int hdr_slot_idx)
+{
+    const struct flash_area *fap = NULL;
+    uint32_t img_security_cnt;
+    int rc;
+
+    fap = BOOT_IMG_AREA(state, slot);
+    assert(fap != NULL);
+
+    rc = bootutil_get_img_security_cnt(state, hdr_slot_idx, fap, &img_security_cnt);
+    if (rc != 0) {
+        goto done;
+    }
+
+    rc = boot_nv_security_counter_update(BOOT_CURR_IMG(state), img_security_cnt);
+    if (rc != 0) {
+        goto done;
+    }
+
+done:
+    return rc;
+}
+#endif /* MCUBOOT_HW_ROLLBACK_PROT */
 
 int boot_open_all_flash_areas(struct boot_loader_state *state)
 {

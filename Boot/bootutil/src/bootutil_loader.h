@@ -37,6 +37,7 @@
 #include "bootutil/bootutil.h"
 #include "bootutil_priv.h"
 #include "bootutil/image.h"
+#include "mcuboot_config.h"
 
 /*
  * This macro allows some control on the allocation of local variables.
@@ -126,6 +127,10 @@ int boot_check_image(struct boot_loader_state *state, struct boot_status *bs, in
  * @retval 1  If ver1 is greater than ver2.
  */
 int boot_compare_version(const struct image_version *ver1, const struct image_version *ver2);
+
+#ifdef MCUBOOT_HW_ROLLBACK_PROT
+int boot_update_security_counter(struct boot_loader_state *state, int slot, int hdr_slot_idx);
+#endif /* MCUBOOT_HW_ROLLBACK_PROT */
 
 
 /**

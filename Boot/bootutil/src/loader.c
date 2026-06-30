@@ -8,11 +8,60 @@
 #include "bootutil_loader.h"
 #include "bootutil_priv.h"
 #include "bootutil/bootutil_log.h"
+#include "mcuboot_config.h"
+#ifdef MCUBOOT_HW_ROLLBACK_PROT
+#include "bootutil/security_cnt.h"
+#endif
 #include "boot_jump.h"
 #include "sysflash.h"
 // #include "boot_public.h"
 
 static struct boot_loader_state boot_data;
+
+static int
+boot_update_hw_rollback_protection(struct boot_loader_state *state)
+{
+#ifdef MCUBOOT_HW_ROLLBACK_PROT
+    int rc;
+
+    /* Update the stored security counter with the newer (active) image's
+     * security counter value.
+     */
+#if defined(MCUBOOT_DIRECT_XIP) && defined(MCUBOOT_DIRECT_XIP_REVERT)
+    /* When the 'revert' mechanism is enabled in direct-xip mode, the
+     * security counter can be increased only after reboot, if the image
+     * has been confirmed at runtime (the image_ok flag has been set).
+     * This way a 'revert' can be performed when it's necessary.
+     */
+    if (state->slot_usage[BOOT_CURR_IMG(state)].swap_state.image_ok == BOOT_FLAG_SET) {
+#endif
+        rc = boot_update_security_counter(state,
+                                          state->slot_usage[BOOT_CURR_IMG(state)].active_slot,
+                                          state->slot_usage[BOOT_CURR_IMG(state)].active_slot);
+        if (rc != 0) {
+            BOOT_LOG_ERR("Security counter update failed after image %d validation: %d",
+                         BOOT_CURR_IMG(state), rc);
+            return rc;
+        }
+
+#ifdef MCUBOOT_HW_ROLLBACK_PROT_LOCK
+        rc = boot_nv_security_counter_lock(BOOT_CURR_IMG(state));
+        if (rc != 0) {
+            BOOT_LOG_ERR("Security counter lock failed after image %d validation: %d",
+                         BOOT_CURR_IMG(state), rc);
+            return rc;
+        }
+#endif /* MCUBOOT_HW_ROLLBACK_PROT_LOCK */
+#if defined(MCUBOOT_DIRECT_XIP) && defined(MCUBOOT_DIRECT_XIP_REVERT)
+    }
+#endif
+
+    return 0;
+#else
+    (void)state;
+    return 0;
+#endif
+}
 
 /*
  * Check that there is a valid image in a slot
@@ -228,7 +277,7 @@ boot_select_or_erase(struct boot_loader_state *state)
             {
                 /*
                  * Writing copy_done failed. This can happen when the flash
-                 * destination is not in erased state — typically after a
+                 * destination is not in erased state, typically after a
                  * power loss during a previous copy_done write left the
                  * QUADWORD partially programmed.
                  *
@@ -315,6 +364,14 @@ int boot_load_and_validate_images(struct boot_loader_state *state)
             continue;
         }
 
+        rc = boot_update_hw_rollback_protection(state);
+        if (rc != 0)
+        {
+            state->slot_usage[BOOT_CURR_IMG(state)].slot_available[active_slot] = false;
+            state->slot_usage[BOOT_CURR_IMG(state)].active_slot = BOOT_SLOT_NONE;
+            continue;
+        }
+
         /* Valid image loaded from a slot, go to next image. */
         break;
     }
@@ -366,13 +423,13 @@ int context_boot_go(struct boot_loader_state *state, struct boot_rsp *rsp)
     int rc;
     int fih_rc = -1;
 
-    rc = boot_open_all_flash_areas(state); // 读取各分区的地址
+    rc = boot_open_all_flash_areas(state);
     if (rc != 0)
     {
         goto out;
     }
 
-    rc = boot_get_slot_usage(state); // 读取各分区的头部，检验头部是否有效
+    rc = boot_get_slot_usage(state);
     if (rc != 0)
     {
         goto close;
@@ -415,7 +472,7 @@ int boot_go(struct boot_rsp *rsp)
 {
     int fih_rc = -1;
 
-    boot_state_init(&boot_data); // 清零boot_data
+    boot_state_init(&boot_data);
 
     fih_rc = context_boot_go(&boot_data, rsp);
 
@@ -459,7 +516,7 @@ void do_boot(struct boot_rsp *rsp)
     BOOT_LOG_INF("SP:0x%08lx", sp);
     BOOT_LOG_INF("Reset:0x%08lx", reset);
     __disable_irq();
-    SysTick->CTRL = 0X00; // 禁止SysTick
+    SysTick->CTRL = 0X00;
     SysTick->LOAD = 0;
     SysTick->VAL = 0;
 

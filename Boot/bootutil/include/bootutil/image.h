@@ -70,6 +70,7 @@ STRUCT_PACKED image_tlv
 #define IMAGE_TLV_ECDSA_SIG 0x22   /* ECDSA of hash output */
 #define IMAGE_TLV_RSA3072_PSS 0x23 /* RSA3072 of hash output */
 #define IMAGE_TLV_ED25519 0x24     /* Ed25519 of hash output */
+#define IMAGE_TLV_SEC_CNT 0x50      /* security counter */
 #define IMAGE_TLV_ANY 0xffff       /* wildcard for TLV iteration */
 #define IMAGE_HASH_LEN 32          /* Size of SHA256 TLV hash */
 #ifndef IMAGE_HASH_SIZE
@@ -97,6 +98,9 @@ int bootutil_tlv_iter_next(struct image_tlv_iter *it,
                            uint32_t *off, uint16_t *len, uint16_t *type);
 int bootutil_tlv_iter_is_prot(struct image_tlv_iter *it, uint32_t off);
 int bootutil_find_key(uint8_t *keyhash, uint8_t keyhash_len);
+int32_t bootutil_get_img_security_cnt(struct boot_loader_state *state, int slot,
+                                      const struct flash_area *fap,
+                                      uint32_t *img_security_cnt);
 
 int bootutil_img_hash(struct boot_loader_state *state,
                       struct image_header *hdr, const struct flash_area *fap,
