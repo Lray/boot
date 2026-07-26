@@ -236,13 +236,18 @@ int main(void)
     const uint32_t secondary = CY_FLASH_BASE + CY_BOOT_BOOTLOADER_SIZE +
                                CY_BOOT_PRIMARY_1_SIZE;
     uint8_t active_slot = BOOT_SLOT_PRIMARY;
+    boot_active_slot_write_result_t write_result;
 
     if (rsp.br_image_off == secondary)
     {
       active_slot = BOOT_SLOT_SECONDARY;
     }
 
-    boot_active_slot_write(active_slot);
+    write_result = boot_active_slot_write(active_slot);
+    if (write_result != BOOT_ACTIVE_SLOT_WRITE_OK)
+    {
+      BOOT_LOG_ERR("Active slot record write failed. rc=%u", (unsigned int)write_result);
+    }
   }
 
   do_boot(&rsp);

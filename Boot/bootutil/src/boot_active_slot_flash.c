@@ -83,19 +83,20 @@ boot_active_slot_read(uint8_t *active_slot)
     return true;
 }
 
-void
+boot_active_slot_write_result_t
 boot_active_slot_write(uint8_t active_slot)
 {
     const struct flash_area *fa;
-
     boot_active_slot_record_t record;
+    boot_active_slot_record_t verify;
+    boot_active_slot_write_result_t result = BOOT_ACTIVE_SLOT_WRITE_OK;
 
     if (active_slot != BOOT_SLOT_PRIMARY && active_slot != BOOT_SLOT_SECONDARY) {
-        return;
+        return BOOT_ACTIVE_SLOT_WRITE_BAD_SLOT;
     }
 
     if (flash_area_open(FLASH_AREA_BOOT_USER, &fa) != 0) {
-        return;
+        return BOOT_ACTIVE_SLOT_WRITE_OPEN_FAILED;
     }
 
 
@@ -105,14 +106,22 @@ boot_active_slot_write(uint8_t active_slot)
     record.checksum = boot_active_slot_checksum(active_slot);
 
     if (flash_area_erase(fa, 0, flash_area_get_size(fa)) != 0) {
-        flash_area_close(fa);
-        return;
+        result = BOOT_ACTIVE_SLOT_WRITE_ERASE_FAILED;
+        goto close;
     }
 
     if (flash_area_write(fa, 0, &record, sizeof(record)) != 0) {
-        flash_area_close(fa);
-        return;
+        result = BOOT_ACTIVE_SLOT_WRITE_PROGRAM_FAILED;
+        goto close;
     }
 
+    if (flash_area_read(fa, 0, &verify, sizeof(verify)) != 0 ||
+        !boot_active_slot_record_valid(&verify) ||
+        verify.active_slot != active_slot) {
+        result = BOOT_ACTIVE_SLOT_WRITE_READBACK_FAILED;
+    }
+
+close:
     flash_area_close(fa);
+    return result;
 }
