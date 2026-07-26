@@ -481,12 +481,24 @@ int boot_go(struct boot_rsp *rsp)
     return fih_rc;
 }
 
-typedef void (*pFunction)(void);
+/*
+ * Transfer control without executing a C function epilogue after MSP changes.
+ * The AAPCS passes app_sp in r0 and app_reset in r1.
+ */
+__attribute__((naked, noreturn))
+static void boot_jump_transfer(uint32_t app_sp __attribute__((unused)),
+                               uint32_t app_reset __attribute__((unused)))
+{
+    __asm volatile(
+        "msr msp, r0\n"
+        "isb\n"
+        "cpsie i\n"
+        "bx r1\n");
+}
 
 void do_boot(struct boot_rsp *rsp)
 {
     uint32_t app_addr = 0;
-    pFunction Jump_To_Application;
     uint32_t sp;
     uint32_t reset;
     uint32_t image_size;
@@ -529,8 +541,6 @@ void do_boot(struct boot_rsp *rsp)
         NVIC->ICPR[i] = 0xFFFFFFFFU;
     }
 
-    Jump_To_Application = (pFunction)reset;
-
     HAL_DeInit();
 
     __set_BASEPRI(0U);
@@ -543,7 +553,5 @@ void do_boot(struct boot_rsp *rsp)
     SCB->VTOR = app_addr;
     __DSB();
     __ISB();
-    __set_MSP(sp);
-    __enable_irq();
-    Jump_To_Application();
+    boot_jump_transfer(sp, reset);
 }
