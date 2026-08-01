@@ -36,6 +36,8 @@
 
 /* Private typedef -----------------------------------------------------------*/
 /* Private define ------------------------------------------------------------*/
+#define YMODEM_FLASH_PROGRAM_UNIT (16U)
+
 /* Private macro -------------------------------------------------------------*/
 /* Private variables ---------------------------------------------------------*/
 extern uint8_t FileName[];
@@ -43,6 +45,65 @@ extern uint8_t FileName[];
 /* Private function prototypes -----------------------------------------------*/
 static uint16_t Cal_CRC16(const uint8_t *data, uint32_t size);
 /* Private functions ---------------------------------------------------------*/
+
+int32_t Ymodem_WritePacketToFlash(const struct flash_area *fa,
+                                  uint32_t flash_off,
+                                  uint32_t file_size,
+                                  uint8_t *packet_data,
+                                  uint32_t packet_length,
+                                  uint32_t *file_bytes_written)
+{
+  uint8_t verify_buf[32];
+  uint32_t remaining;
+  uint32_t file_bytes;
+  uint32_t write_length;
+  uint32_t verify_off = 0U;
+
+  if ((fa == NULL) || (packet_data == NULL) ||
+      (file_bytes_written == NULL) || (packet_length == 0U) ||
+      ((packet_length % YMODEM_FLASH_PROGRAM_UNIT) != 0U) ||
+      (flash_off >= file_size))
+  {
+    return -1;
+  }
+
+  remaining = file_size - flash_off;
+  file_bytes = (remaining < packet_length) ? remaining : packet_length;
+  write_length = (file_bytes + (YMODEM_FLASH_PROGRAM_UNIT - 1U)) &
+                 ~(YMODEM_FLASH_PROGRAM_UNIT - 1U);
+  if ((write_length == 0U) || (write_length > packet_length))
+  {
+    return -1;
+  }
+
+  if (write_length > file_bytes)
+  {
+    memset(packet_data + file_bytes, 0xFF, write_length - file_bytes);
+  }
+
+  if (flash_area_write(fa, flash_off, packet_data, write_length) != 0)
+  {
+    return -1;
+  }
+
+  while (verify_off < write_length)
+  {
+    uint32_t chunk = write_length - verify_off;
+    if (chunk > sizeof(verify_buf))
+    {
+      chunk = sizeof(verify_buf);
+    }
+    if ((flash_area_read(fa, flash_off + verify_off, verify_buf, chunk) != 0) ||
+        (memcmp(verify_buf, packet_data + verify_off, chunk) != 0))
+    {
+      return -1;
+    }
+    verify_off += chunk;
+  }
+
+  *file_bytes_written = file_bytes;
+  return 0;
+}
 
 static uint8_t Send_Byte(uint8_t c)
 {
@@ -157,7 +218,6 @@ int32_t Ymodem_Receive(uint8_t *buf, uint8_t target_slot)
 {
   uint8_t file_size[FILE_SIZE_LENGTH], *file_ptr;
   uint8_t *packet_data = buf;
-  uint8_t verify_buf[32];
   int32_t i, packet_length, session_done, file_done, packets_received, errors, session_begin, size = 0;
   uint32_t flash_off = 0;
   uint32_t flash_size = 0;
@@ -197,6 +257,13 @@ int32_t Ymodem_Receive(uint8_t *buf, uint8_t target_slot)
           goto cleanup;
         /* End of transmission */
         case 0:
+          if ((size <= 0) || (flash_off != (uint32_t)size))
+          {
+            Send_Byte(CA);
+            Send_Byte(CA);
+            result = -2;
+            goto cleanup;
+          }
           Send_Byte(ACK);
           file_done = 1;
           break;
@@ -228,7 +295,7 @@ int32_t Ymodem_Receive(uint8_t *buf, uint8_t target_slot)
 
                 /* Test the size of the image to be sent */
                 /* Image size is greater than Flash size */
-                if (size > (int32_t)flash_size)
+                if ((size <= 0) || (size > (int32_t)flash_size))
                 {
                   /* End session */
                   Send_Byte(CA);
@@ -260,34 +327,19 @@ int32_t Ymodem_Receive(uint8_t *buf, uint8_t target_slot)
             /* Data packet */
             else
             {
+              uint32_t file_bytes_written = 0U;
+
               /* Write received data in Flash */
-              if (flash_area_write(fa, flash_off,
-                                   packet_data + PACKET_HEADER,
-                                   (uint32_t)packet_length) == 0)
+              if (Ymodem_WritePacketToFlash(fa,
+                                            flash_off,
+                                            (uint32_t)size,
+                                            packet_data + PACKET_HEADER,
+                                            (uint32_t)packet_length,
+                                            &file_bytes_written) == 0)
               {
-                uint32_t verify_off = 0;
-                while (verify_off < (uint32_t)packet_length)
-                {
-                  uint32_t chunk = (uint32_t)packet_length - verify_off;
-                  if (chunk > sizeof(verify_buf))
-                  {
-                    chunk = sizeof(verify_buf);
-                  }
-                  if (flash_area_read(fa, flash_off + verify_off, verify_buf, chunk) != 0 ||
-                      memcmp(verify_buf,
-                             packet_data + PACKET_HEADER + verify_off,
-                             chunk) != 0)
-                  {
-                    Send_Byte(CA);
-                    Send_Byte(CA);
-                    result = -2;
-                    goto cleanup;
-                  }
-                  verify_off += chunk;
-                }
                 Send_Byte(ACK);
                 IWDG_Feed();
-                flash_off += (uint32_t)packet_length;
+                flash_off += file_bytes_written;
               }
               else /* An error occurred while writing to Flash memory */
               {

@@ -55,6 +55,14 @@
 #define MAX_ERRORS (5)
 
 /* Exported functions ------------------------------------------------------- */
+struct flash_area;
+
+int32_t Ymodem_WritePacketToFlash(const struct flash_area *fa,
+                                  uint32_t flash_off,
+                                  uint32_t file_size,
+                                  uint8_t *packet_data,
+                                  uint32_t packet_length,
+                                  uint32_t *file_bytes_written);
 int32_t Ymodem_Receive(uint8_t *buf, uint8_t target_slot);
 
 #endif /* __YMODEM_H_ */
