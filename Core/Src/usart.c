@@ -285,10 +285,23 @@ int _sys_read(FILEHANDLE fh, unsigned char *buf, unsigned len, int mode)
 
 void _ttywrch(int ch) { (void)ch; }
 
+/* GCC (newlib) printf/fprintf path: syscalls.c _write() calls this. */
+int __io_putchar(int ch)
+{
+  uint8_t byte = (uint8_t)ch;
+
+  if (HAL_UART_Transmit(&huart1, &byte, 1U, HAL_MAX_DELAY) != HAL_OK)
+  {
+    return EOF;
+  }
+
+  return ch;
+}
+
+/* ARMCC (MDK) printf/fprintf path. */
 int fputc(int ch, FILE *f)
 {
   (void)f;
-  HAL_UART_Transmit(&huart1, (uint8_t *)&ch, 1, HAL_MAX_DELAY);
-  return ch;
+  return __io_putchar(ch);
 }
 /* USER CODE END 1 */

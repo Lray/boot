@@ -7,6 +7,27 @@
 /MDK-ARM/*.uvprojx.bak
 
 
+# CMake/Ninja build output
+/build/
+/CMakeCache.txt
+/CMakeFiles/
+/cmake_install.cmake
+*.o
+*.d
+*.elf
+*.map
+*.bin
+*.hex
+
+# IDE / tooling user state
+/.vscode/
+/.settings/
+/.clangd
+/compile_commands.json
+
+# Host-side test scratch
+/tmp_build/
+
 /Vscode/
 /Tests/
 /docs/
