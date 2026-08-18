@@ -42,8 +42,15 @@ MEMORY
 {
   RAM (xrw)   : ORIGIN = 0x20000000, LENGTH = 2496K
   SRAM4 (xrw) : ORIGIN = 0x28000000, LENGTH = 16K
-  FLASH (rx)  : ORIGIN = 0x08000000, LENGTH = 4096K
+  FLASH (rx)  : ORIGIN = 0x08000000, LENGTH = 64K
 }
+
+/* Boot Flash window is exactly 64KB; Slot0 (Primary) starts at 0x08010000.
+ * Do not widen LENGTH without also updating Boot/sysflash/sysflash.h. */
+ASSERT(ORIGIN(FLASH) + LENGTH(FLASH) == 0x08010000,
+       "Boot Flash window must end exactly at Slot0 start (0x08010000)")
+ASSERT(LENGTH(FLASH) == 0x10000,
+       "Boot Flash length must be 64KB (0x10000)")
 /* Highest address of the user mode stack */
 _estack = ORIGIN(RAM) + LENGTH(RAM); /* end of "RAM" Ram type memory */
 
